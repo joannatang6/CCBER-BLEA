@@ -1,0 +1,235 @@
+---
+title: "CCBER BLEA"
+author: "Joanna Tang"
+date: "11/22/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# CCBER BLEA
+
+
+```{r include = FALSE}
+
+library(janitor)
+library(rstatix)
+library(FSA)
+library(tidyverse)
+
+
+blea <- read_csv("BLEA6years - BLEA6years.csv")
+
+
+```
+
+## 1. Total biomass
+
+####H1: There is a relationship between total biomass, height, and cover.
+Results: There is a significant linear relationship between total biomass and total cover. H1 supported.
+
+```{r echo = FALSE, message = FALSE, warning = FALSE}
+
+#H1: There is a relationship between total biomass, height, and cover.
+
+## Dataframe of total percent cover and biomass
+blea_2019 <- blea %>% 
+  filter(sowing.year == "2019") %>% 
+  pivot_longer(26:27, names_to = "native_status", values_to = "percent_cover") %>% 
+  pivot_longer(24:25, names_to = "native_status_biomass", values_to = "biomass") %>% 
+  group_by(Slope, rep, Aspect, Topo, lifted) %>% 
+  summarize(total_pc = sum(percent_cover),
+            total_biomass = sum(biomass))
+
+## Scatterplot of total biomass vs. percent cover
+biomass_pc_scatter <- blea_2019 %>% 
+  ggplot(aes(x = total_pc, y = total_biomass)) +
+  geom_point() +
+  geom_smooth(method = lm, se = TRUE, size = .5) +
+  labs(title = "Total percent cover and biomass", x = "Percent Cover (%)", y = "Biomass (g)", caption = "Graph shows general linear model of total biomass as a function of total percent cover \n Biomass = 1.6581*PC - 4.7024, p << 0.001, R2 = 0.81") +
+  theme_classic() +
+  scale_y_continuous(expand = c(0,0))
+biomass_pc_scatter
+
+## Linear model
+biomass_pc_lm <- lm(total_biomass ~ total_pc, data = blea_2019)
+#plot(biomass_pc_lm)
+#summary(biomass_pc_lm)
+#biomass = 1.6581(pc) - 4.7024, p << .001, R2 = .8097
+
+```
+
+
+## 2. BLEA 2019 plots
+
+####H2a. Biomass/cover in the swale plots will be higher than that in the north-facing plots, and the south-facing plots will have the lowest biomass/cover.
+Results: Total median cover in the south-facing plots were significantly lower than than that in the south-facing and swale plots.  No significant difference in north-facing and swale plots.  H2a partially supported. <p>
+
+####H2b. Biomass/cover in grounded herbivore-proof cages will be higher than in cages lifted to just capture fog but allow for herbivory.
+Results: Total median cover in the grounded cages had significantly higher than that in the lifted cages, only for swale and north-facing plots.  H2b partially supported. <p>
+
+####H2c. Native status does not change the effect of the treatment.
+Results: Ratio of native:nonnative cover does not differ between caging treatments.  H2c supported. <br>
+Note that the ratio was significantly higher in the Swale and North-facing plots (regardless of caging treatment), due to more nonnative cover.
+
+```{r echo = FALSE, message = FALSE, warning = FALSE}
+
+# H2a. Biomass/cover in the swale plots will be higher than that in the north-facing plots, and the south-facing plots will have the lowest biomass/cover.
+
+
+## Exploratory graphs
+hist_pc <- blea_2019 %>% 
+  ggplot() +
+  geom_histogram(aes(x = total_pc))
+#skewed right
+qq_pc <- blea_2019 %>% 
+  ggplot() +
+  geom_qq(aes(sample = total_pc))
+#skewed right
+hist_native_pc <- blea %>% 
+  ggplot() +
+  geom_histogram(aes(x = nativecover))
+#pretty normal -- slightly skewed right
+qq_native_pc <- blea %>% 
+  ggplot() +
+  geom_qq(aes(sample = nativecover))
+#pretty normal -- slightly skewed right
+qq_nonnative_pc <- blea %>% 
+  ggplot() +
+  geom_histogram(aes(x = nonnativecover))
+#skewed right
+qq_nonnative_pc <- blea %>% 
+  ggplot() +
+  geom_qq(aes(sample = nonnativecover))
+#skewed right
+
+## Boxplots of percent cover, by topo
+blea_2019_topo_box <- blea_2019 %>% 
+  ggplot(aes(x = Topo, y = total_pc)) +
+  geom_boxplot() +
+  geom_jitter(width = .2, alpha = .4) +
+  labs(title = "Total percent cover, by topography", x = "Location", y = "Total Percent Cover (%)", caption = "Graph shows boxplot of total percent cover in each plot.  \n South-facing plots have significantly lower total percent cover \n than those North-facing or in the Swale (Kruskal-Wallis chi-squared, = 5.97, p = 0.05).") +
+  theme_classic() +
+  scale_y_continuous(expand = c(0,0), limits = c(0, 130)) +
+  scale_x_discrete(labels = c("Swale", "North", "South"))
+blea_2019_topo_box
+
+## Kruskal-Wallis, for topo
+blea_2019_topo_kw <- kruskal.test(total_pc ~ as.factor(Topo), data = blea_2019)
+#p = .05054, chi-squared(2) = 5.9698
+
+## Post-hoc Dunn's test
+blea_2019_topo_dunn <- dunnTest(total_pc ~ as.factor(Topo), data = blea_2019)
+#swale-south p = .03179, north-south p = .037206
+
+
+
+#H2b. Biomass/cover in grounded herbivore-proof cages will be higher than in cages lifted to just capture fog but allow for herbivory.
+
+## Boxplots of percent cover, by caging treatment
+blea_2019_treatment_box <- blea_2019 %>% 
+  ggplot(aes(x = lifted, y = total_pc)) +
+  geom_boxplot() +
+  geom_jitter(width = .2, alpha = .4) +
+  labs(title = "Total percent cover, by caging treatment", x = "Caging Treatment", y = "Total Percent Cover (%)", caption = "Graph shows boxplot of total percent cover in each plot.  \n Grounded Cages had significantly higher percent cover than lifted cages (Wilcoxon W = 53.5 p = 0.015).") +
+  theme_classic() +
+  scale_y_continuous(expand = c(0,0), limits = c(0, 130)) +
+  scale_x_discrete(labels = c("Grounded Cages", "Lifted Cages"))
+blea_2019_treatment_box
+
+## Wilcox, by treatment only
+lifted <- blea_2019 %>% 
+  filter(lifted == "yes")
+grounded <- blea_2019 %>% 
+  filter(lifted == "no")
+blea_2019_treatment_wilcox <- wilcox.test(lifted$total_pc, grounded$total_pc)
+#p = .01521, W = 53.5
+
+
+## Boxplots of percent cover, by caging treatment and topo
+blea_2019_treatment_topo_box <- blea_2019 %>% 
+  ggplot(aes(x = lifted, y = total_pc)) +
+  geom_boxplot() +
+  geom_jitter(width = .2, alpha = .4) +
+  facet_wrap(~Topo) +
+  labs(title = "Total percent cover, by caging treatment and topography", x = "Caging Treatment", y = "Total Percent Cover (%)", caption = "Graph shows boxplot of total percent cover in each plot.  \n Grounded Cages had significantly higher percent cover than lifted cages only \n in plots in the Swale (Wilcoxon W = 1 p = 0.016) and North-facing (Wilcoxon W = 4, p = 0.095).") +
+  theme_classic() +
+  scale_y_continuous(expand = c(0,0), limits = c(0, 130)) +
+  scale_x_discrete(labels = c("Grounded Cages", "Lifted Cages"))
+blea_2019_treatment_topo_box
+
+## Wilcox, for South plots
+lifted_south <- blea_2019 %>% 
+  filter(lifted == "yes") %>% 
+  filter(Topo == "South Steep")
+grounded_south <- blea_2019 %>% 
+  filter(lifted == "no") %>% 
+  filter(Topo == "South Steep")
+blea_2019_south_wilcox <- wilcox.test(lifted_south$total_pc, grounded_south$total_pc)
+#p = .8413, W = 11
+
+## Wilcox, for North plots
+lifted_north <- blea_2019 %>% 
+  filter(lifted == "yes") %>% 
+  filter(Topo == "North Steep")
+grounded_north <- blea_2019 %>% 
+  filter(lifted == "no") %>% 
+  filter(Topo == "North Steep")
+blea_2019_north_wilcox <- wilcox.test(lifted_north$total_pc, grounded_north$total_pc)
+#p = .09524, W = 4
+
+## Wilcox, for Swale plots
+lifted_swale <- blea_2019 %>% 
+  filter(lifted == "yes") %>% 
+  filter(Topo == "No.aspect Swale")
+grounded_swale<- blea_2019 %>% 
+  filter(lifted == "no") %>% 
+  filter(Topo == "No.aspect Swale")
+blea_2019_swale_wilcox <- wilcox.test(lifted_swale$total_pc, grounded_swale$total_pc)
+#p = .01587, W = 1
+
+
+
+# H2c. Native status does not change the effect of the treatment.
+
+## Stacked column graphs of median native and nonnative percent cover
+blea_2019_native_nonnative_col <- blea %>% 
+  filter(sowing.year == "2019") %>% 
+  pivot_longer(26:27, names_to = "native_status", values_to = "percent_cover") %>% 
+  group_by(Topo, lifted, native_status) %>% 
+  summarize(median = median(percent_cover)) %>% 
+  ggplot(aes(x = lifted, y = median, fill = native_status)) +
+  geom_col(position = "fill") +
+  facet_wrap(~Topo) +
+  labs(title = "Ratio of native vs. nonnative cover", x = "Caging Treatment", y = "Proportion of Percent Cover", caption = "Graph shows median proportion of native and nonnative percent cover in each plot.  \n Significantly lower proportion of nonnative cover in the Swale and South-facing plots \n than that in the the North-facing plots (Kruskal-Wallis chi-squared = 20.40, p << 0.001).") +
+  theme_classic() +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_fill_manual(values = c("chartreuse4", "coral4"), name = "Native Status", labels = c("native", "nonnative")) +
+  scale_x_discrete(labels = c("Grounded Cages", "Lifted Cages"))
+blea_2019_native_nonnative_col
+
+## Kruskal-Wallis, for native vs. nonnative
+blea_native_nonnative_kw_df <- blea %>% 
+  filter(sowing.year == "2019") %>% 
+  mutate(ratio = nativecover/nonnativecover)
+blea_2019_native_nonnative_kw <- kruskal.test(ratio ~ as.factor(Topo), data = blea_native_nonnative_kw_df)
+#p << .001, chi-squared(1) = 20.401
+
+## Post-hoc Dunn's test
+blea_2019_native_nonnative_dunn <- dunnTest(ratio ~ as.factor(Topo), data = blea_native_nonnative_kw_df)
+#swale-north p << .001, swale-south p = .3454, north-south p = .0015956
+
+
+```
+
+
+
+## 3. BLEA 2014-2016 plots
+
+H3a. Biomass will be higher in the two caged treatments than in the uncaged treatments.
+
+H3b. Biomass will be higher in the swale then the north facing then the south facing plots
+
+H3c. Difference in biomass or cover by natives versus non-natives between caging treatments or between topographic positions - this would be exploratory.

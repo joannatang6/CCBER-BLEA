@@ -19,10 +19,13 @@ library(rstatix)
 library(FSA)
 library(plotrix)
 library(tidyverse)
+library(vegan)
 
 
 blea <- read_csv("BLEA6years - BLEA6years.csv")
 biomass_height <- read_csv("biomass_height.csv")
+blea_2019_pc_height <- read_csv("2019_pc_height.csv") %>% filter(height_cm<200)
+metadata <- read_csv("metadata.csv")
 
 ```
 
@@ -465,6 +468,84 @@ blea_2019_native_nonnative_biomass_dunn <- dunnTest(ratio ~ as.factor(Topo), dat
 #swale-north p = .001256197, swale-south p = .133977044, north-south p = .168262882
 
 
+## NMDS of vegetation communities of plots, by location
+
+### Community matrix dataframe
+blea_2019_nmds_df <- blea_2019_pc_height %>% 
+  drop_na() %>% 
+  select(location, plot, cage, species, percent_cover) %>% 
+  pivot_wider(names_from = species, values_from = percent_cover) %>% 
+  mutate_all(funs(replace_na(.,0))) %>% 
+  mutate(plot_id = paste(location, plot, cage, sep = "-")) %>% 
+  column_to_rownames(var = "plot_id")
+blea_2019_community_matrix <- blea_2019_nmds_df[, -c(1:3)]
+
+### NMDS
+blea_2019_nmds <- metaMDS(blea_2019_community_matrix, distance = "bray", k=2, wascores = TRUE)
+blea_2019_nmds_scores <- blea_2019_nmds$species
+location <- c(rep("North",10), rep("South",10), rep("Swale",10))
+plot(blea_2019_nmds)
+ordihull(blea_2019_nmds,groups=location,draw="polygon",col="grey90")
+orditorp(blea_2019_nmds, "species", cex = .5)
+orditorp(blea_2019_nmds,display="site",air=0.01, alpha =  .5, col=c(rep("chocolate",10),rep("darkseagreen",10),rep("deepskyblue3",10)))
+
+
+### Height of each species, by location and caging treatment
+#### Exploratory graphs
+height_hist <- blea_2019_pc_height %>% 
+  ggplot() +
+  geom_histogram(aes(x = height_cm))
+#skewed right
+height_qq <- blea_2019_pc_height %>% 
+  ggplot() +
+  geom_qq(aes(sample = height_cm))
+#skewed right
+
+#### Boxplot of height of each species, by location and caging treatment
+blea_2019_height_box <- blea_2019_pc_height %>% 
+  filter(height_cm<200) %>% 
+  ggplot(aes(x = cage, y = height_cm)) +
+  facet_wrap(~species) +
+  geom_boxplot() +
+  geom_jitter(width = .2, alpha = .4) +
+  labs(title = "Plant height at each plot", x = "Caging Treatment", y = "Height (cm)", caption = "Graph shows boxplots of height of each plant in each plot.  \n No-cage plots have significantly lower biomass index than all caged plots (Kruskal-Wallis chi-squared = 14.60, p < 0.001)).") +
+  theme_classic() +
+  scale_y_continuous(expand = c(0,0), limits = c(0, 475)) +
+  theme(legend.position = "none") +
+  scale_x_discrete(labels = c("Small-Mesh Cage", "Large-Mesh Cage", "No Cage"))
+#blea_2019_height_box
+
+
+#### Kruskal-Wallis, by cage
+cage_kw_df <- blea_2019_pc_height %>% 
+  mutate(species_cage = paste(species, cage, sep = "-"))
+cage_kw <- kruskal.test(height_cm ~ as.factor(species_cage), data = cage_kw_df)
+#p<.001, chi-squared(59) = 166.39
+## Post-hoc Dunn's test
+cage_dunn <- dunnTest(height_cm ~ as.factor(species_cage), data = cage_kw_df)
+#no sig diff w/in species
+
+#### Kruskal-Wallis, by location
+location_kw_df <- blea_2019_pc_height %>% 
+  mutate(species_location = paste(species, location, sep = "-"))
+location_kw <- kruskal.test(height_cm ~ as.factor(species_location), data = location_kw_df)
+#p<.001, chi-squared(67) = 169.69
+## Post-hoc Dunn's test
+location_dunn <- dunnTest(height_cm ~ as.factor(species_location), data = location_kw_df)
+#no sig diff w/in species
+
+
+
+#### Wilcox, for ABUM
+abum_lifted <- blea_2019_pc_height %>% 
+  filter(cage == "lifted") %>% 
+  filter(species == "Abronia umbellata")
+abum_grounded <- blea_2019_pc_height %>% 
+  filter(cage == "grounded") %>% 
+  filter(species == "Abronia umbellata")
+abum_cage_wilcox <- wilcox.test(abum_lifted$height_cm, abum_grounded$height_cm)
+#W = 0, p-value = 0.1939
+
 
 ```
 
@@ -564,13 +645,6 @@ blea_2014_biomass_box <- biomass_2014 %>%
   scale_x_discrete(labels = c("Ridge", "Swale", "North Steep", "South Steep"))
 blea_2014_biomass_box
 
-## Kruskal-Wallis, for topo
-blea_2014_biomass_topo_kw <- kruskal.test(total_biomass ~ as.factor(Topo), data = biomass_2014)
-#p = .009776, chi-squared(3) = 11.394
-
-## Post-hoc Dunn's test
-blea_2014_biomass_topo_dunn <- dunnTest(total_biomass ~ as.factor(Topo), data = biomass_2014)
-#swale-south p = .01830017
 
 
 
@@ -688,7 +762,7 @@ blea_2014_biomasss_treatment_topo_box <- biomass_2014 %>%
   theme_classic() +
   scale_y_continuous(expand = c(0,0), limits = c(0, 475)) +
   theme(legend.position = "none") +
-  scale_x_discrete(labels = c("Ridge", "Swale", "North Steep", "South Steep"))
+  scale_x_discrete(labels = c("Small-Mesh Cage", "Large-Mesh Cage", "No Cage"))
 blea_2014_biomasss_treatment_topo_box
 
 ## Kruskal-Wallis, for Ridge treatments
@@ -819,6 +893,8 @@ blea_2014_native_nonnative_dunn <- dunnTest(ratio ~ as.factor(Topo), data = blea
 
 blea_2014_native_nonnative_biomass_treatment_kw <- kruskal.test(ratio ~ as.factor(cage), data = blea_2014_native_nonnative_biomass_kw_df)
 #p = .6292, chi-squared(2) = .92647
+
+
 
 ```
 
